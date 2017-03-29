@@ -20,6 +20,16 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <activity
+            android:name=".VideoActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:label="@string/title_activity_video"
+            android:parentActivityName=".CamSelectActivity"
+            android:theme="@style/FullscreenTheme">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value="com.raspicamstreamer.raspicamstreamer.CamSelectActivity"/>
+        </activity>
     </application>
 
 </manifest>

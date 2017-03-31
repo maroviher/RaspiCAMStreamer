@@ -135,8 +135,6 @@ public class CamSelectActivity extends AppCompatActivity {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 // ListView Clicked item index
-                int itemPosition = position;
-                Log.d("asfasdf", listView.getItemAtPosition(position).toString());
 
                 Intent intent = new Intent(getContext(), VideoActivity.class);
                 intent.putExtra(VideoActivity.CAMERA, listView.getItemAtPosition(position).toString());

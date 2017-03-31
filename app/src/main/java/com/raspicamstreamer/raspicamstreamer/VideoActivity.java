@@ -7,24 +7,35 @@ import android.os.Bundle;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
+import android.widget.Button;
+import android.widget.SeekBar;
+import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
 
 import java.io.InputStream;
+import java.io.PrintWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import android.view.WindowManager;
 
 
-
-public class VideoActivity extends AppCompatActivity implements TextureView.SurfaceTextureListener{
+public class VideoActivity extends AppCompatActivity implements TextureView.SurfaceTextureListener, SeekBar.OnSeekBarChangeListener{
 
     public final static String CAMERA = "camera";
     private DecoderThread decoderThread = null;
-    private TextView messageView;
     private String m_strCamera;
+    private ArrayList<View> views_to_fade = new ArrayList<>();
+    private TextView textViewSS, messageView, framesView, textViewISO, textViewFPS;
+    private SeekBar seekBar_iso, seekBar_ss;
+    private Button button_SS, button_move_up, button_move_down, button_zoom_reset, button_move_left,
+            button_move_right, button_mot, button_zoom_in, button_zoom_out;
+    private int[] iso_map = {0, 100, 200, 400, 800, 1600};
 
     @Override
     public void onStart()
@@ -53,7 +64,7 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
     {
         if (decoderThread == null)
         {
-            decoderThread = new DecoderThread();
+            decoderThread = new DecoderThread(this);
             decoderThread.setSurface(new Surface(surfaceTexture));
             decoderThread.start();
         }
@@ -89,6 +100,7 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_video);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         messageView = (TextView) findViewById(R.id.video_message);
         m_strCamera = getStringExtra(savedInstanceState, CAMERA);
@@ -101,6 +113,112 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                 | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
         textureView.setSurfaceTextureListener(this);
+
+        views_to_fade.add(button_zoom_in = (Button)findViewById(R.id.button_zoom_in));
+        button_zoom_in.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                decoderThread.ZoomIN();
+            }
+        });
+        views_to_fade.add(button_zoom_out = (Button)findViewById(R.id.button_zoom_out));
+        button_zoom_out.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                decoderThread.ZoomOUT();
+            }
+        });
+        views_to_fade.add(button_zoom_reset = (Button)findViewById(R.id.button_zoom_reset));
+        button_zoom_reset.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                decoderThread.Move('R');
+            }
+        });
+        views_to_fade.add(button_move_left = (Button)findViewById(R.id.button_move_left));
+        button_move_left.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                decoderThread.Move('l');
+            }
+        });
+        views_to_fade.add(button_move_right = (Button)findViewById(R.id.button_move_right));
+        button_move_right.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                decoderThread.Move('r');
+            }
+        });
+        views_to_fade.add(button_move_up = (Button)findViewById(R.id.button_move_up));
+        button_move_up.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                decoderThread.Move('u');
+            }
+        });
+        views_to_fade.add(button_move_down = (Button)findViewById(R.id.button_move_down));
+        button_move_down.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                decoderThread.Move('d');
+            }
+        });
+
+        views_to_fade.add(textViewISO = (TextView)findViewById(R.id.iso));
+        textViewISO.setVisibility(View.VISIBLE);
+
+        views_to_fade.add(seekBar_iso = (SeekBar)findViewById(R.id.seekBar_iso));
+        seekBar_iso.setOnSeekBarChangeListener(this);
+
+        views_to_fade.add(seekBar_ss = (SeekBar)findViewById(R.id.seekBar_ss));
+        seekBar_ss.setOnSeekBarChangeListener(this);
+
+        views_to_fade.add(textViewSS = (TextView)findViewById(R.id.shutter_speed));
+
+        views_to_fade.add(button_SS = (Button)findViewById(R.id.button_ss));
+        button_SS.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                String bCap = button_SS.getText().toString();
+                if(bCap.equals("1"))
+                    button_SS.setText("10");
+                else if(bCap.equals("10"))
+                    button_SS.setText("100");
+                else
+                    button_SS.setText("1");
+            }
+        });
+        views_to_fade.add(button_mot = (Button)findViewById(R.id.button_motion));
+        button_mot.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                String bCap = button_mot.getText().toString();
+                if(bCap.equals("M=0")) {
+                    button_mot.setText("M=1");
+                    decoderThread.SetMotion(1);
+                }
+                else {
+                    button_mot.setText("M=0");
+                    decoderThread.SetMotion(0);
+                }
+            }
+        });
+
+        textureView = (TextureView)findViewById(R.id.video_surface);
+        textureView.setSurfaceTextureListener(this);
+        //textureView.setZoomRange(MIN_ZOOM, MAX_ZOOM);
+        textureView.setOnTouchListener(new View.OnTouchListener()
+        {
+            @Override
+            public boolean onTouch(View v, MotionEvent e)
+            {
+                switch (e.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        int iAction;
+                        if(View.VISIBLE == views_to_fade.get(0).getVisibility())
+                            iAction = View.GONE;
+                        else
+                            iAction = View.VISIBLE;
+
+                        for (View view : views_to_fade) {
+                            view.setVisibility(iAction);
+                        }
+                        break;
+                }
+                return false;
+            }
+        });
     }
 
     @Override
@@ -111,6 +229,51 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
         if (actionBar != null) {
             actionBar.hide();
         }
+    }
+
+    public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser)
+    {
+        switch(seekBar.getId())
+        {
+            case R.id.seekBar_iso:
+                final int iso_seek = progress;
+                runOnUiThread(new Runnable()
+                {
+                    public void run()
+                    {
+                        textViewISO.setText(String.format("ISO=%d", iso_map[iso_seek]));
+                        if(decoderThread != null)
+                        {
+                            decoderThread.SetISO(iso_map[iso_seek]);
+                        }
+                    }
+                });
+                break;
+            case R.id.seekBar_ss:
+                final int ss_seek = progress * Integer.parseInt(button_SS.getText().toString());
+                runOnUiThread(new Runnable()
+                {
+                    public void run()
+                    {
+                        textViewSS.setText(String.format("ss=%d", ss_seek));
+                        if(decoderThread != null)
+                        {
+                            decoderThread.SetSS(ss_seek);
+                        }
+                    }
+                });
+                break;
+        }
+    }
+
+    @Override
+    public void onStartTrackingTouch(SeekBar seekBar) {
+
+    }
+
+    @Override
+    public void onStopTrackingTouch(SeekBar seekBar) {
+
     }
 
     private class DecoderThread extends Thread
@@ -128,6 +291,51 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
 
         private final Object mPauseLock = new Object();
         private boolean mPaused = false;
+
+        private AppCompatActivity m_act;
+
+        private PrintWriter sockPrintWriter = null;
+
+        DecoderThread(AppCompatActivity act)
+        {
+            m_act = act;
+        }
+
+        public void SetISO(int iISO)
+        {
+            if(socket != null && socket.isConnected())
+                sockPrintWriter.println(String.format("iso=%d", iISO));
+        }
+
+        public void SetSS(int iSS)
+        {
+            if(socket != null && socket.isConnected())
+                sockPrintWriter.println(String.format("ss=%d", iSS));
+        }
+
+        public void ZoomIN()
+        {
+            if(socket != null && socket.isConnected())
+                sockPrintWriter.println("move=i");
+        }
+
+        public void ZoomOUT()
+        {
+            if(socket != null && socket.isConnected())
+                sockPrintWriter.println("move=o");
+        }
+
+        public void SetMotion(int i)
+        {
+            if(socket != null && socket.isConnected())
+                sockPrintWriter.println(String.format("motion=%d", i));
+        }
+
+        public void Move(char ch)
+        {
+            if(socket != null && socket.isConnected())
+                sockPrintWriter.println(String.format("move=%c", ch));
+        }
 
         public void setPaused() {
             synchronized (mPauseLock) {
@@ -222,6 +430,7 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                             socket = new Socket();
                             socket.connect(socketAddress, 3000);
                             inputStream = socket.getInputStream();
+                            sockPrintWriter = new PrintWriter(socket.getOutputStream(), true);
                             bConnected = true;
                         } catch (Exception ex) {
                             sleep(3000, 0);
@@ -233,7 +442,7 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
 
                     buffer = new byte[TCPIP_BUFFER_SIZE];
 
-                    outputFormat = MediaFormat.createVideoFormat("video/avc", 1920, 1080);
+                    outputFormat = MediaFormat.createVideoFormat("video/avc", 1296, 972);
                     mediaCodec = MediaCodec.createDecoderByType("video/avc");
                     mediaCodec.configure(outputFormat, surface, null, 0);
                     mediaCodec.start();

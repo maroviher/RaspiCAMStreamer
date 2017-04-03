@@ -1,17 +1,22 @@
 package com.raspicamstreamer.raspicamstreamer;
 
+import android.content.Context;
 import android.graphics.SurfaceTexture;
 import android.media.MediaCodec;
 import android.media.MediaFormat;
 import android.os.Bundle;
+import android.os.Handler;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
+import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
@@ -21,6 +26,7 @@ import java.io.PrintWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import android.view.WindowManager;
 
@@ -31,11 +37,13 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
     private DecoderThread decoderThread = null;
     private String m_strCamera;
     private ArrayList<View> views_to_fade = new ArrayList<>();
-    private TextView textViewSS, messageView, framesView, textViewISO, textViewFPS;
+    private TextView textViewSS, messageView, textViewISO, textViewFPS;
     private SeekBar seekBar_iso, seekBar_ss;
     private Button button_SS, button_move_up, button_move_down, button_zoom_reset, button_move_left,
             button_move_right, button_mot, button_zoom_in, button_zoom_out;
     private int[] iso_map = {0, 100, 200, 400, 800, 1600};
+    private boolean m_bRunning = true;
+    private Runnable fpsRunnable;
 
     @Override
     public void onStart()
@@ -49,6 +57,7 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
         super.onPause();
         if (decoderThread != null)
             decoderThread.setPaused();
+        m_bRunning = false;
     }
 
     @Override
@@ -57,6 +66,7 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
         super.onResume();
         if (decoderThread != null)
             decoderThread.setUnpaused();
+        m_bRunning = true;
     }
 
     @Override
@@ -167,6 +177,7 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
         seekBar_ss.setOnSeekBarChangeListener(this);
 
         views_to_fade.add(textViewSS = (TextView)findViewById(R.id.shutter_speed));
+        views_to_fade.add(textViewFPS = (TextView)findViewById(R.id.frames_cnt));
 
         views_to_fade.add(button_SS = (Button)findViewById(R.id.button_ss));
         button_SS.setOnClickListener(new View.OnClickListener() {
@@ -196,6 +207,15 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
         });
 
         textureView = (TextureView)findViewById(R.id.video_surface);
+
+        //example how to determine screen size
+        /*DisplayMetrics displayMetrics = new DisplayMetrics();
+        WindowManager windowmanager = (WindowManager) getApplicationContext().getSystemService(Context.WINDOW_SERVICE);
+        windowmanager.getDefaultDisplay().getMetrics(displayMetrics);
+        Log.d("ads", String.format("%d:%d", displayMetrics.widthPixels, displayMetrics.heightPixels));*/
+
+        //textureView.setLayoutParams(new FrameLayout.LayoutParams(1440, 1080, Gravity.CENTER));//fullscreen 4:3 for -w 1296 -h 972, full FOV of raspi camera
+        textureView.setLayoutParams(new FrameLayout.LayoutParams(1920, 1080, Gravity.CENTER));//fullscreen 16:9
         textureView.setSurfaceTextureListener(this);
         //textureView.setZoomRange(MIN_ZOOM, MAX_ZOOM);
         textureView.setOnTouchListener(new View.OnTouchListener()
@@ -206,10 +226,16 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                 switch (e.getAction()) {
                     case MotionEvent.ACTION_DOWN:
                         int iAction;
-                        if(View.VISIBLE == views_to_fade.get(0).getVisibility())
+                        if(View.VISIBLE == views_to_fade.get(0).getVisibility()) {
                             iAction = View.GONE;
-                        else
+                            if (decoderThread != null)
+                                decoderThread.ShowFps(false);
+                        }
+                        else {
+                            if (decoderThread != null)
+                                decoderThread.ShowFps(true);
                             iAction = View.VISIBLE;
+                        }
 
                         for (View view : views_to_fade) {
                             view.setVisibility(iAction);
@@ -299,6 +325,13 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
         DecoderThread(AppCompatActivity act)
         {
             m_act = act;
+        }
+        private int m_iFramesCnt = 0;
+        private boolean m_bShowFps = true;
+
+        public void ShowFps(boolean bShow)
+        {
+            m_bShowFps = bShow;
         }
 
         public void SetISO(int iISO)
@@ -442,7 +475,7 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
 
                     buffer = new byte[TCPIP_BUFFER_SIZE];
 
-                    outputFormat = MediaFormat.createVideoFormat("video/avc", 1296, 972);
+                    outputFormat = MediaFormat.createVideoFormat("video/avc", 1920, 1080);
                     mediaCodec = MediaCodec.createDecoderByType("video/avc");
                     mediaCodec.configure(outputFormat, surface, null, 0);
                     mediaCodec.start();
@@ -479,6 +512,9 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                     }
 
                     hideMessage();
+                    m_iFramesCnt = 0;
+                    long timePrevFpsShow = System.currentTimeMillis();
+                    int iFramesSinceLastFpsShow = 1;
                     while (!(bInterrupted = Thread.interrupted())) {
                         if (!read_exact(buffer, 4))
                             throw new Exception("read_exact");
@@ -509,6 +545,31 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                             // Can ignore if using getOutputFormat(outputBufferId)
                             outputFormat = mediaCodec.getOutputFormat(); // option B
                         }
+                        m_iFramesCnt++;
+
+                        if(m_bShowFps) {
+                            long timeNow = System.currentTimeMillis();
+                            final long timeDelta = timeNow - timePrevFpsShow;
+                            if (timeDelta > 500) {
+                                final double fFPS = iFramesSinceLastFpsShow * 1000.0 / timeDelta;
+                                runOnUiThread(new Runnable() {
+                                    public void run() {
+                                        String strTmp;
+                                        if (fFPS < 5)
+                                            strTmp = String.format("%d, %.1f", m_iFramesCnt, fFPS);
+                                        else
+                                            strTmp = String.format("%d, %d", m_iFramesCnt, Math.round(fFPS));
+
+                                        textViewFPS.setText(strTmp);
+                                    }
+                                });
+                                timePrevFpsShow = timeNow;
+                                iFramesSinceLastFpsShow = 1;
+                            } else {
+                                iFramesSinceLastFpsShow++;
+                            }
+                        }
+
                     }
                 } catch (Exception ex) {
                 }

@@ -25,6 +25,7 @@
         <activity
             android:name=".VideoActivity"
             android:configChanges="orientation|keyboardHidden|screenSize"
+            android:screenOrientation="sensorLandscape"
             android:label="@string/title_activity_video"
             android:parentActivityName=".CamSelectActivity"
             android:theme="@style/FullscreenTheme">

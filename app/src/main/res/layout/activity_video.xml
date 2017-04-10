@@ -67,6 +67,20 @@
                       android:layout_gravity="top"
                       android:weightSum="1">
 
+            <Button android:id="@+id/button_motion_alarm"
+                    android:layout_width="50dp"
+                    android:layout_height="match_parent"
+                    android:layout_gravity="left"
+                    android:text="A=0"
+                    android:textSize="10sp"/>
+
+            <Button android:id="@+id/button_aspect_ratio"
+                    android:layout_width="50dp"
+                    android:layout_height="match_parent"
+                    android:layout_gravity="left"
+                    android:text="16:9"
+                    android:textSize="10sp"/>
+
             <Button android:id="@+id/button_motion"
                     android:layout_width="50dp"
                     android:layout_height="match_parent"

@@ -1,9 +1,11 @@
 package com.raspicamstreamer.raspicamstreamer;
 
+import android.app.Dialog;
 import android.content.Context;
 import android.graphics.SurfaceTexture;
 import android.media.MediaCodec;
 import android.media.MediaFormat;
+import android.media.MediaPlayer;
 import android.os.Bundle;
 import android.os.Handler;
 import android.support.v7.app.ActionBar;
@@ -16,6 +18,7 @@ import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
@@ -40,10 +43,11 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
     private TextView textViewSS, messageView, textViewISO, textViewFPS;
     private SeekBar seekBar_iso, seekBar_ss;
     private Button button_SS, button_move_up, button_move_down, button_zoom_reset, button_move_left,
-            button_move_right, button_mot, button_zoom_in, button_zoom_out;
+            button_move_right, button_mot, button_aspect_rat, button_mot_alarm, button_zoom_in, button_zoom_out;
+    TextureView textureView;
     private int[] iso_map = {0, 100, 200, 400, 800, 1600};
     private boolean m_bRunning = true;
-    private Runnable fpsRunnable;
+    int m_iXres, m_iYres;
 
     @Override
     public void onStart()
@@ -115,7 +119,7 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
         messageView = (TextView) findViewById(R.id.video_message);
         m_strCamera = getStringExtra(savedInstanceState, CAMERA);
 
-        TextureView textureView = (TextureView)findViewById(R.id.video_surface);
+        textureView = (TextureView)findViewById(R.id.video_surface);
         textureView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LOW_PROFILE
                 | View.SYSTEM_UI_FLAG_FULLSCREEN
                 | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -197,25 +201,66 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                 String bCap = button_mot.getText().toString();
                 if(bCap.equals("M=0")) {
                     button_mot.setText("M=1");
-                    decoderThread.SetMotion(1);
+                    decoderThread.SetShowMotion(1);
                 }
                 else {
                     button_mot.setText("M=0");
-                    decoderThread.SetMotion(0);
+                    decoderThread.SetShowMotion(0);
                 }
+            }
+        });
+        views_to_fade.add(button_aspect_rat = (Button)findViewById(R.id.button_aspect_ratio));
+        button_aspect_rat.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                String bCap = button_aspect_rat.getText().toString();
+                if(bCap.equals("16:9")) {
+                    textureView.setLayoutParams(new FrameLayout.LayoutParams(m_iYres*4/3, m_iYres, Gravity.CENTER));
+                    button_aspect_rat.setText("4:3");
+                }
+                else {
+                    textureView.setLayoutParams(new FrameLayout.LayoutParams(m_iXres, m_iYres, Gravity.CENTER));
+                    button_aspect_rat.setText("16:9");
+                }
+            }
+        });
+        views_to_fade.add(button_mot_alarm = (Button)findViewById(R.id.button_motion_alarm));
+        button_mot_alarm.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                final Dialog d = new Dialog(v.getContext());
+                d.setContentView(R.layout.dialog_mot_alarm);
+                d.setTitle("Add motion alarm, leave blank to remove motion alarm");
+                d.setCancelable(true);
+                final EditText edit = (EditText) d.findViewById(R.id.editTextMotionAlarm);
+                Button b = (Button) d.findViewById(R.id.MotionAlarmOK);
+                b.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View v) {
+                        String str = edit.getText().toString();
+                        int iMot = 0;
+                        try
+                        {
+                            iMot = Integer.parseInt(str);
+                        } catch (NumberFormatException e) {
+                        }
+                        button_mot_alarm.setText(String.format("A=%d", iMot));
+                        decoderThread.SetMotionAlarm(iMot);
+                        d.dismiss();
+                    }
+                });
+
+                d.show();
             }
         });
 
         textureView = (TextureView)findViewById(R.id.video_surface);
 
-        //example how to determine screen size
-        /*DisplayMetrics displayMetrics = new DisplayMetrics();
+        //determine and save screen size
+        DisplayMetrics displayMetrics = new DisplayMetrics();
         WindowManager windowmanager = (WindowManager) getApplicationContext().getSystemService(Context.WINDOW_SERVICE);
         windowmanager.getDefaultDisplay().getMetrics(displayMetrics);
-        Log.d("ads", String.format("%d:%d", displayMetrics.widthPixels, displayMetrics.heightPixels));*/
+        m_iXres = displayMetrics.widthPixels;
+        m_iYres = displayMetrics.heightPixels;
 
-        //textureView.setLayoutParams(new FrameLayout.LayoutParams(1440, 1080, Gravity.CENTER));//fullscreen 4:3 for -w 1296 -h 972, full FOV of raspi camera
-        textureView.setLayoutParams(new FrameLayout.LayoutParams(1920, 1080, Gravity.CENTER));//fullscreen 16:9
+        textureView.setLayoutParams(new FrameLayout.LayoutParams(m_iXres, m_iYres, Gravity.CENTER));
         textureView.setSurfaceTextureListener(this);
         //textureView.setZoomRange(MIN_ZOOM, MAX_ZOOM);
         textureView.setOnTouchListener(new View.OnTouchListener()
@@ -230,6 +275,12 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                             iAction = View.GONE;
                             if (decoderThread != null)
                                 decoderThread.ShowFps(false);
+                            textureView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LOW_PROFILE
+                                    | View.SYSTEM_UI_FLAG_FULLSCREEN
+                                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
                         }
                         else {
                             if (decoderThread != null)
@@ -310,7 +361,7 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
         private MediaCodec mediaCodec = null;
         private MediaFormat outputFormat;
         private Surface surface;
-        private byte[] buffer = null;
+        private byte[] buffer = new byte[TCPIP_BUFFER_SIZE];;
 
         private Socket socket = null;
         private InputStream inputStream = null;
@@ -321,13 +372,17 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
         private AppCompatActivity m_act;
 
         private PrintWriter sockPrintWriter = null;
+        private MediaPlayer mpMotionDetected = null;
 
         DecoderThread(AppCompatActivity act)
         {
             m_act = act;
         }
-        private int m_iFramesCnt = 0;
-        private boolean m_bShowFps = true;
+        private int m_iFramesCnt = 0, m_iMotAlarm = 0;
+        private boolean m_bShowFps = true, m_bShowMotion = false;
+
+        static final byte CurrentResolution = 0, RegularFrame = 1, MotionInFrame = 2, MotionAlarm = 3;
+
 
         public void ShowFps(boolean bShow)
         {
@@ -358,10 +413,18 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                 sockPrintWriter.println("move=o");
         }
 
-        public void SetMotion(int i)
+        public void SetShowMotion(int i)
         {
+            m_bShowMotion = (i==1)?(true):(false);
             if(socket != null && socket.isConnected())
                 sockPrintWriter.println(String.format("motion=%d", i));
+        }
+
+        public void SetMotionAlarm(int i)
+        {
+            m_iMotAlarm = i;
+            if(socket != null && socket.isConnected())
+                sockPrintWriter.println(String.format("mot_alarm=%d", i));
         }
 
         public void Move(char ch)
@@ -396,30 +459,22 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                     (b[3] & 0xFF) << 24;
         }
 
-        private Boolean read_exact(byte[] buffer, int cnt)
+        private Boolean read_exact(byte[] buffer, int cnt) throws Exception
         {
             if(inputStream == null)
                 return false;
             int iToRead = cnt;
             int offset = 0;
-            try
+            int read;
+            while(iToRead > 0)
             {
-                int read;
-                while(iToRead > 0)
-                {
-                    read = inputStream.read(buffer, offset, iToRead);
-                    if(read < 1)
-                        throw new Exception("qwer");
-                    iToRead -= read;
-                    offset += read;
-                }
-                return true;
+                read = inputStream.read(buffer, offset, iToRead);
+                if(read < 1)
+                    throw new Exception("qwer");
+                iToRead -= read;
+                offset += read;
             }
-            catch (Exception ex)
-            {
-                setMessage(String.format("read_exact(cnt=%d, offset=%d, iToRead=%d)", cnt, offset, iToRead));
-                return false;
-            }
+            return true;
         }
 
         @Override
@@ -473,7 +528,11 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                         }
                     }
 
-                    buffer = new byte[TCPIP_BUFFER_SIZE];
+                    //send to server our wished parameters after a reconnect
+                    if(m_bShowMotion)
+                        SetShowMotion(1);
+                    if(0 != m_iMotAlarm)
+                        SetMotionAlarm(m_iMotAlarm);
 
                     outputFormat = MediaFormat.createVideoFormat("video/avc", 1920, 1080);
                     mediaCodec = MediaCodec.createDecoderByType("video/avc");
@@ -482,12 +541,10 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
 
                     //read and set SPS, PPS
                     for (int i = 0; i < 2; i++) {
-                        if (!read_exact(buffer, 4))
-                            throw new Exception("read_exact");
+                        read_exact(buffer, 4);
 
                         int sps_or_pps_len = byteArrayToInt(buffer);
-                        if (!read_exact(buffer, sps_or_pps_len))
-                            throw new Exception("read_exact");
+                        read_exact(buffer, sps_or_pps_len);
 
                         int inputBufferId = mediaCodec.dequeueInputBuffer(BUFFER_TIMEOUT);
                         if (inputBufferId >= 0) {
@@ -515,64 +572,87 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                     m_iFramesCnt = 0;
                     long timePrevFpsShow = System.currentTimeMillis();
                     int iFramesSinceLastFpsShow = 1;
+                    byte[] bDataType = new byte[1];
+                    byte[] byteMotion = new byte[1];
+                    int iMotionSum = 0;
                     while (!(bInterrupted = Thread.interrupted())) {
-                        if (!read_exact(buffer, 4))
-                            throw new Exception("read_exact");
+                        read_exact(bDataType, 1);
+                        switch(bDataType[0])
+                        {
+                            case MotionAlarm:
+                                if(mpMotionDetected == null)
+                                    mpMotionDetected = MediaPlayer.create(m_act, R.raw.airbus_autopilot);
+                                if(!mpMotionDetected.isPlaying())
+                                    mpMotionDetected.start();
+                                break;
 
-                        int iFrameLen = byteArrayToInt(buffer);
-                        if (iFrameLen > TCPIP_BUFFER_SIZE) {
-                            setMessage(String.format("iFrameLen=%d", iFrameLen));
-                            return;
-                        }
+                            case MotionInFrame:
+                                read_exact(byteMotion, 1);
+                                break;
 
-                        int inputBufferId = mediaCodec.dequeueInputBuffer(BUFFER_TIMEOUT);
-                        if (inputBufferId >= 0) {
-                            ByteBuffer inputBuffer = mediaCodec.getInputBuffer(inputBufferId);
-                            if (!read_exact(buffer, iFrameLen))
-                                throw new Exception("read_exact");
-                            inputBuffer.put(buffer, 0, iFrameLen);
-                            mediaCodec.queueInputBuffer(inputBufferId, 0, iFrameLen, presentationTime, 0);
-                            presentationTime += 666666;
-                        } else {
-                            setMessage(String.format("codec.dequeueInputBuffer=%d", inputBufferId));
-                            return;
-                        }
-                        outputBufferId = mediaCodec.dequeueOutputBuffer(info, BUFFER_TIMEOUT);
-                        if (outputBufferId >= 0) {
-                            mediaCodec.releaseOutputBuffer(outputBufferId, true);
-                        } else if (outputBufferId == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                            // Subsequent data will conform to new format.
-                            // Can ignore if using getOutputFormat(outputBufferId)
-                            outputFormat = mediaCodec.getOutputFormat(); // option B
-                        }
-                        m_iFramesCnt++;
+                            case RegularFrame:
+                                read_exact(buffer, 4);
+                                int iFrameLen = byteArrayToInt(buffer);
+                                if (iFrameLen > TCPIP_BUFFER_SIZE) {
+                                    setMessage(String.format("iFrameLen=%d", iFrameLen));
+                                    return;
+                                }
 
-                        if(m_bShowFps) {
-                            long timeNow = System.currentTimeMillis();
-                            final long timeDelta = timeNow - timePrevFpsShow;
-                            if (timeDelta > 500) {
-                                final double fFPS = iFramesSinceLastFpsShow * 1000.0 / timeDelta;
-                                runOnUiThread(new Runnable() {
-                                    public void run() {
-                                        String strTmp;
-                                        if (fFPS < 5)
-                                            strTmp = String.format("%d, %.1f", m_iFramesCnt, fFPS);
-                                        else
-                                            strTmp = String.format("%d, %d", m_iFramesCnt, Math.round(fFPS));
+                                int inputBufferId = mediaCodec.dequeueInputBuffer(BUFFER_TIMEOUT);
+                                if (inputBufferId >= 0) {
+                                    ByteBuffer inputBuffer = mediaCodec.getInputBuffer(inputBufferId);
+                                    read_exact(buffer, iFrameLen);
+                                    inputBuffer.put(buffer, 0, iFrameLen);
+                                    mediaCodec.queueInputBuffer(inputBufferId, 0, iFrameLen, presentationTime, 0);
+                                    presentationTime += 666666;
+                                } else {
+                                    setMessage(String.format("codec.dequeueInputBuffer=%d", inputBufferId));
+                                    return;
+                                }
+                                outputBufferId = mediaCodec.dequeueOutputBuffer(info, BUFFER_TIMEOUT);
+                                if (outputBufferId >= 0) {
+                                    mediaCodec.releaseOutputBuffer(outputBufferId, true);
+                                } else if (outputBufferId == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                                    // Subsequent data will conform to new format.
+                                    // Can ignore if using getOutputFormat(outputBufferId)
+                                    outputFormat = mediaCodec.getOutputFormat(); // option B
+                                }
+                                m_iFramesCnt++;
+                                if(m_bShowFps) {
+                                    long timeNow = System.currentTimeMillis();
+                                    final long timeDelta = timeNow - timePrevFpsShow;
+                                    if(m_bShowMotion)
+                                        iMotionSum += byteMotion[0];
+                                    else
+                                        iMotionSum = -1;
+                                    if (timeDelta > 500) {
+                                        final double fFPS = iFramesSinceLastFpsShow * 1000.0 / timeDelta;
+                                        final int iMot = iMotionSum;
+                                        runOnUiThread(new Runnable() {
+                                            public void run() {
+                                                String strTmp;
+                                                if (fFPS < 5)
+                                                    strTmp = String.format("%d, %.1f, %3d", m_iFramesCnt, fFPS, iMot);
+                                                else
+                                                    strTmp = String.format("%d, %d, %3d", m_iFramesCnt, Math.round(fFPS), iMot);
 
-                                        textViewFPS.setText(strTmp);
+                                                textViewFPS.setText(strTmp);
+                                            }
+                                        });
+                                        timePrevFpsShow = timeNow;
+                                        iFramesSinceLastFpsShow = 1;
+                                        iMotionSum = 0;
+                                    } else {
+                                        iFramesSinceLastFpsShow++;
                                     }
-                                });
-                                timePrevFpsShow = timeNow;
-                                iFramesSinceLastFpsShow = 1;
-                            } else {
-                                iFramesSinceLastFpsShow++;
-                            }
+                                }
+                                break;
+                            default:
+                                setMessage("Unknown data type");
+                                return;
                         }
-
                     }
-                } catch (Exception ex) {
-                }
+                } catch (Exception ex) {}
 
                 try {
                     if (inputStream != null) {

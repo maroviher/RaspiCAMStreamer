@@ -253,6 +253,7 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
             {
                 switch (e.getAction()) {
                     case MotionEvent.ACTION_DOWN:
+                        HideStatusBar();
                         int iAction;
                         if(View.VISIBLE == views_to_fade.get(0).getVisibility()) {
                             iAction = View.GONE;

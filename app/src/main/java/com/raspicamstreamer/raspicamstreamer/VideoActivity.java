@@ -7,11 +7,9 @@ import android.media.MediaCodec;
 import android.media.MediaFormat;
 import android.media.MediaPlayer;
 import android.os.Bundle;
-import android.os.Handler;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.util.DisplayMetrics;
-import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.Surface;
@@ -21,7 +19,6 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.SeekBar;
-import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
 
 import java.io.InputStream;
@@ -29,7 +26,6 @@ import java.io.PrintWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
-import java.text.DecimalFormat;
 import java.util.ArrayList;
 import android.view.WindowManager;
 
@@ -44,34 +40,11 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
     private SeekBar seekBar_iso, seekBar_ss;
     private Button button_SS, button_move_up, button_move_down, button_zoom_reset, button_move_left,
             button_move_right, button_mot, button_aspect_rat, button_mot_alarm, button_zoom_in, button_zoom_out;
-    TextureView textureView;
+
     private int[] iso_map = {0, 100, 200, 400, 800, 1600};
-    private boolean m_bRunning = true;
     int m_iXres, m_iYres;
+    private TextureView mTextureView;
 
-    @Override
-    public void onStart()
-    {
-        super.onStart();
-    }
-
-    @Override
-    public void onPause()
-    {
-        super.onPause();
-        if (decoderThread != null)
-            decoderThread.setPaused();
-        m_bRunning = false;
-    }
-
-    @Override
-    public void onResume()
-    {
-        super.onResume();
-        if (decoderThread != null)
-            decoderThread.setUnpaused();
-        m_bRunning = true;
-    }
 
     @Override
     public void onSurfaceTextureAvailable(SurfaceTexture surfaceTexture, int width, int height)
@@ -92,6 +65,15 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
     @Override
     public boolean onSurfaceTextureDestroyed(SurfaceTexture surfaceTexture)
     {
+        if (decoderThread != null) {
+            decoderThread.StopThread();
+            try {
+                decoderThread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            decoderThread = null;
+        }
         return true;
     }
 
@@ -109,6 +91,16 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
         return l;
     }
 
+    public void HideStatusBar()
+    {
+        mTextureView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LOW_PROFILE
+                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -119,14 +111,8 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
         messageView = (TextView) findViewById(R.id.video_message);
         m_strCamera = getStringExtra(savedInstanceState, CAMERA);
 
-        textureView = (TextureView)findViewById(R.id.video_surface);
-        textureView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LOW_PROFILE
-                | View.SYSTEM_UI_FLAG_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
-        textureView.setSurfaceTextureListener(this);
+        mTextureView = (TextureView)findViewById(R.id.video_surface);
+        mTextureView.setSurfaceTextureListener(this);
 
         views_to_fade.add(button_zoom_in = (Button)findViewById(R.id.button_zoom_in));
         button_zoom_in.setOnClickListener(new View.OnClickListener() {
@@ -214,11 +200,11 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
             public void onClick(View v) {
                 String bCap = button_aspect_rat.getText().toString();
                 if(bCap.equals("16:9")) {
-                    textureView.setLayoutParams(new FrameLayout.LayoutParams(m_iYres*4/3, m_iYres, Gravity.CENTER));
+                    mTextureView.setLayoutParams(new FrameLayout.LayoutParams(m_iYres*4/3, m_iYres, Gravity.CENTER));
                     button_aspect_rat.setText("4:3");
                 }
                 else {
-                    textureView.setLayoutParams(new FrameLayout.LayoutParams(m_iXres, m_iYres, Gravity.CENTER));
+                    mTextureView.setLayoutParams(new FrameLayout.LayoutParams(m_iXres, m_iYres, Gravity.CENTER));
                     button_aspect_rat.setText("16:9");
                 }
             }
@@ -250,9 +236,6 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                 d.show();
             }
         });
-
-        textureView = (TextureView)findViewById(R.id.video_surface);
-
         //determine and save screen size
         DisplayMetrics displayMetrics = new DisplayMetrics();
         WindowManager windowmanager = (WindowManager) getApplicationContext().getSystemService(Context.WINDOW_SERVICE);
@@ -260,10 +243,10 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
         m_iXres = displayMetrics.widthPixels;
         m_iYres = displayMetrics.heightPixels;
 
-        textureView.setLayoutParams(new FrameLayout.LayoutParams(m_iXres, m_iYres, Gravity.CENTER));
-        textureView.setSurfaceTextureListener(this);
-        //textureView.setZoomRange(MIN_ZOOM, MAX_ZOOM);
-        textureView.setOnTouchListener(new View.OnTouchListener()
+        mTextureView.setLayoutParams(new FrameLayout.LayoutParams(m_iXres, m_iYres, Gravity.CENTER));
+        mTextureView.setSurfaceTextureListener(this);
+        //mTextureView.setZoomRange(MIN_ZOOM, MAX_ZOOM);
+        mTextureView.setOnTouchListener(new View.OnTouchListener()
         {
             @Override
             public boolean onTouch(View v, MotionEvent e)
@@ -275,12 +258,6 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                             iAction = View.GONE;
                             if (decoderThread != null)
                                 decoderThread.ShowFps(false);
-                            textureView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LOW_PROFILE
-                                    | View.SYSTEM_UI_FLAG_FULLSCREEN
-                                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
                         }
                         else {
                             if (decoderThread != null)
@@ -355,34 +332,28 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
 
     private class DecoderThread extends Thread
     {
-        private final static int BUFFER_TIMEOUT = 100000;
+        private final static int INPUT_BUFFER_TIMEOUT = 100000;
         private final static int TCPIP_BUFFER_SIZE = 2000000;
 
         private MediaCodec mediaCodec = null;
-        private MediaFormat outputFormat;
-        private Surface surface;
+        private Surface mSurface;
         private byte[] buffer = new byte[TCPIP_BUFFER_SIZE];;
 
         private Socket socket = null;
         private InputStream inputStream = null;
 
-        private final Object mPauseLock = new Object();
-        private boolean mPaused = false;
-
-        private AppCompatActivity m_act;
-
         private PrintWriter sockPrintWriter = null;
         private MediaPlayer mpMotionDetected = null;
 
-        DecoderThread(AppCompatActivity act)
+        DecoderThread(VideoActivity parent)
         {
-            m_act = act;
+            mParent = parent;
         }
         private int m_iFramesCnt = 0, m_iMotAlarm = 0;
         private boolean m_bShowFps = true, m_bShowMotion = false;
-
         static final byte CurrentResolution = 0, RegularFrame = 1, MotionInFrame = 2, MotionAlarm = 3;
-
+        private boolean mStop = false;
+        VideoActivity mParent;
 
         public void ShowFps(boolean bShow)
         {
@@ -433,29 +404,16 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                 sockPrintWriter.println(String.format("move=%c", ch));
         }
 
-        public void setPaused() {
-            synchronized (mPauseLock) {
-                mPaused = true;
-            }
-        }
-
-        public void setUnpaused() {
-            synchronized (mPauseLock) {
-                mPaused = false;
-                mPauseLock.notifyAll();
-            }
-        }
-
         public void setSurface(Surface surface)
         {
-            this.surface = surface;
+            this.mSurface = surface;
         }
 
         private int byteArrayToInt(byte[] b)
         {
-            return   b[0] & 0xFF |
+            return  (b[0] & 0xFF) << 0 |
                     (b[1] & 0xFF) << 8 |
-                    (b[2] & 0xFF) << 16 |
+                    (b[2] & 0xFF) << 16|
                     (b[3] & 0xFF) << 24;
         }
 
@@ -475,6 +433,58 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                 offset += read;
             }
             return true;
+        }
+
+        private MediaCodec InitCodec()
+        {
+            MediaCodec mediaCodec = null;
+            try {
+                MediaFormat outputFormat = MediaFormat.createVideoFormat("video/avc", 100, 100);
+                mediaCodec = MediaCodec.createDecoderByType("video/avc");
+                mediaCodec.configure(outputFormat, mSurface, null, 0);
+                mediaCodec.start();
+
+            }catch (Exception ex)
+            {
+                setMessage(ex.getMessage());
+                if (mediaCodec != null) {
+                    try {
+                        mediaCodec.release();
+                    } catch (Exception ex1) {
+                    }
+                    mediaCodec = null;
+                }
+            }
+            return mediaCodec;
+        }
+
+        void CleanUpAll()
+        {
+            if (mediaCodec != null) {
+                try {
+                    mediaCodec.release();
+                } catch (Exception ex) {}
+            }
+            mediaCodec = null;
+        }
+
+        void CleanUpNetwork()
+        {
+            try {
+                if (inputStream != null) {
+                    inputStream.close();
+                    inputStream = null;
+                }
+                if (socket != null) {
+                    socket.close();
+                    socket = null;
+                }
+            } catch (Exception ex) { }
+        }
+
+        public void StopThread()
+        {
+            mStop = true;
         }
 
         @Override
@@ -497,8 +507,14 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                 return;
             }
 
-            boolean bInterrupted = false;
-            while (!bInterrupted) {
+
+            MediaCodec mediaCodec = InitCodec();
+            if(null == mediaCodec) {
+                setMessage("InitCodec error");
+                return;
+            }
+
+            while (!mStop) {
                 long presentationTime = System.nanoTime() / 1000;
                 try {
                     InetSocketAddress socketAddress = new InetSocketAddress(strHost, iPort);
@@ -506,25 +522,20 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                     int attempts = 0;
                     while (!bConnected) {
                         try {
-                            synchronized (mPauseLock) {
-                                while (mPaused) {
-                                    try {
-                                        mPauseLock.wait();
-                                    } catch (InterruptedException e) {
-                                    }
-                                }
-                            }
                             setMessage(String.format("Connecting(%d) to %s:%d...", attempts++, strHost, iPort));
                             socket = new Socket();
-                            socket.connect(socketAddress, 3000);
+                            socket.connect(socketAddress, 2000);
                             inputStream = socket.getInputStream();
                             sockPrintWriter = new PrintWriter(socket.getOutputStream(), true);
                             bConnected = true;
                         } catch (Exception ex) {
-                            sleep(3000, 0);
                             socket = null;
-                            if (Thread.interrupted())
+                            if(mStop) {
+                                CleanUpAll();
                                 return;
+                            }
+                            setMessage(ex.getMessage());
+                            sleep(2000, 0);
                         }
                     }
 
@@ -534,10 +545,6 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                     if(0 != m_iMotAlarm)
                         SetMotionAlarm(m_iMotAlarm);
 
-                    outputFormat = MediaFormat.createVideoFormat("video/avc", 1920, 1080);
-                    mediaCodec = MediaCodec.createDecoderByType("video/avc");
-                    mediaCodec.configure(outputFormat, surface, null, 0);
-                    mediaCodec.start();
 
                     //read and set SPS, PPS
                     for (int i = 0; i < 2; i++) {
@@ -546,42 +553,34 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                         int sps_or_pps_len = byteArrayToInt(buffer);
                         read_exact(buffer, sps_or_pps_len);
 
-                        int inputBufferId = mediaCodec.dequeueInputBuffer(BUFFER_TIMEOUT);
+                        int inputBufferId = mediaCodec.dequeueInputBuffer(1000000);//wait 1 second for an input buffer
                         if (inputBufferId >= 0) {
                             ByteBuffer inputBuffer = mediaCodec.getInputBuffer(inputBufferId);
                             inputBuffer.put(buffer, 0, sps_or_pps_len);
-                            mediaCodec.queueInputBuffer(inputBufferId, 0, sps_or_pps_len, presentationTime, MediaCodec.BUFFER_FLAG_CODEC_CONFIG);
-                            presentationTime += 666666;
+                            mediaCodec.queueInputBuffer(inputBufferId, 0, sps_or_pps_len, /*presentationTime++*/0, MediaCodec.BUFFER_FLAG_CODEC_CONFIG);
                         } else {
                             setMessage(String.format("codec.dequeueInputBuffer=%d", inputBufferId));
                             return;
                         }
                     }
 
-                    MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-                    int outputBufferId = mediaCodec.dequeueOutputBuffer(info, BUFFER_TIMEOUT);
-                    if (outputBufferId >= 0) {
-                        mediaCodec.releaseOutputBuffer(outputBufferId, true);
-                    } else if (outputBufferId == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        // Subsequent data will conform to new format.
-                        // Can ignore if using getOutputFormat(outputBufferId)
-                        outputFormat = mediaCodec.getOutputFormat(); // option B
-                    }
-
+                    hideStatusBar();
                     hideMessage();
+
                     m_iFramesCnt = 0;
                     long timePrevFpsShow = System.currentTimeMillis();
                     int iFramesSinceLastFpsShow = 1;
                     byte[] bDataType = new byte[1];
                     byte[] byteMotion = new byte[1];
+                    MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
                     int iMotionSum = 0;
-                    while (!(bInterrupted = Thread.interrupted())) {
+                    while (!mStop) {
                         read_exact(bDataType, 1);
                         switch(bDataType[0])
                         {
                             case MotionAlarm:
                                 if(mpMotionDetected == null)
-                                    mpMotionDetected = MediaPlayer.create(m_act, R.raw.airbus_autopilot);
+                                    mpMotionDetected = MediaPlayer.create(mParent, R.raw.airbus_autopilot);
                                 if(!mpMotionDetected.isPlaying())
                                     mpMotionDetected.start();
                                 break;
@@ -594,30 +593,27 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                                 read_exact(buffer, 4);
                                 int iFrameLen = byteArrayToInt(buffer);
                                 if (iFrameLen > TCPIP_BUFFER_SIZE) {
-                                    setMessage(String.format("iFrameLen=%d", iFrameLen));
+                                    setMessage(String.format("iFrameLen=%d > TCPIP_BUFFER_SIZE", iFrameLen));
+                                    CleanUpAll();
                                     return;
                                 }
 
-                                int inputBufferId = mediaCodec.dequeueInputBuffer(BUFFER_TIMEOUT);
+                                int inputBufferId = mediaCodec.dequeueInputBuffer(INPUT_BUFFER_TIMEOUT);
                                 if (inputBufferId >= 0) {
                                     ByteBuffer inputBuffer = mediaCodec.getInputBuffer(inputBufferId);
                                     read_exact(buffer, iFrameLen);
                                     inputBuffer.put(buffer, 0, iFrameLen);
-                                    mediaCodec.queueInputBuffer(inputBufferId, 0, iFrameLen, presentationTime, 0);
-                                    presentationTime += 666666;
+                                    mediaCodec.queueInputBuffer(inputBufferId, 0, iFrameLen, /*presentationTime++*/0, 0);
                                 } else {
                                     setMessage(String.format("codec.dequeueInputBuffer=%d", inputBufferId));
+                                    CleanUpAll();
                                     return;
                                 }
-                                outputBufferId = mediaCodec.dequeueOutputBuffer(info, BUFFER_TIMEOUT);
-                                if (outputBufferId >= 0) {
+                                int outputBufferId;//render to screen
+                                while((outputBufferId = mediaCodec.dequeueOutputBuffer(info, 0)) >= 0)
                                     mediaCodec.releaseOutputBuffer(outputBufferId, true);
-                                } else if (outputBufferId == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                                    // Subsequent data will conform to new format.
-                                    // Can ignore if using getOutputFormat(outputBufferId)
-                                    outputFormat = mediaCodec.getOutputFormat(); // option B
-                                }
                                 m_iFramesCnt++;
+
                                 if(m_bShowFps) {
                                     long timeNow = System.currentTimeMillis();
                                     final long timeDelta = timeNow - timePrevFpsShow;
@@ -649,32 +645,28 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                                 break;
                             default:
                                 setMessage("Unknown data type");
+                                CleanUpAll();
                                 return;
                         }
                     }
-                } catch (Exception ex) {}
-
-                try {
-                    if (inputStream != null) {
-                        inputStream.close();
-                        inputStream = null;
-                    }
-                    if (socket != null) {
-                        socket.close();
-                        socket = null;
-                    }
-                } catch (Exception ex) { }
-
-                if (mediaCodec != null) {
-                    try {
-                        mediaCodec.release();
-                    } catch (Exception ex) {
-                    }
-                    mediaCodec = null;
+                } catch (Exception ex) {
+                    setMessage(ex.getMessage());
                 }
-            }//while (!bInterrupted) {
+                CleanUpNetwork();
+            }
+            CleanUpAll();
         }//public void run() {
 
+        private void hideStatusBar()
+        {
+            runOnUiThread(new Runnable()
+            {
+                public void run()
+                {
+                    mParent.HideStatusBar();
+                }
+            });
+        }
         private void hideMessage()
         {
             runOnUiThread(new Runnable()

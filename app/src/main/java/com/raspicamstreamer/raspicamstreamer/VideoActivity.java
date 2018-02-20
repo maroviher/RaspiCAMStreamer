@@ -7,6 +7,7 @@ import android.media.MediaCodec;
 import android.media.MediaFormat;
 import android.media.MediaPlayer;
 import android.os.Bundle;
+import android.os.StrictMode;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.util.DisplayMetrics;
@@ -274,6 +275,9 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                 return false;
             }
         });
+	//Allow network operations on GUI thread 
+        StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
+        StrictMode.setThreadPolicy(policy);
     }
 
     @Override
@@ -516,7 +520,6 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
             }
 
             while (!mStop) {
-                long presentationTime = System.nanoTime() / 1000;
                 try {
                     InetSocketAddress socketAddress = new InetSocketAddress(strHost, iPort);
                     boolean bConnected = false;
@@ -547,22 +550,20 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                         SetMotionAlarm(m_iMotAlarm);
 
 
-                    //read and set SPS, PPS
-                    for (int i = 0; i < 2; i++) {
-                        read_exact(buffer, 4);
+                    //read SPS/PPS
+                    read_exact(buffer, 4);
+                    int sps_or_pps_len = byteArrayToInt(buffer);
+                    read_exact(buffer, sps_or_pps_len);
 
-                        int sps_or_pps_len = byteArrayToInt(buffer);
-                        read_exact(buffer, sps_or_pps_len);
-
-                        int inputBufferId = mediaCodec.dequeueInputBuffer(1000000);//wait 1 second for an input buffer
-                        if (inputBufferId >= 0) {
-                            ByteBuffer inputBuffer = mediaCodec.getInputBuffer(inputBufferId);
-                            inputBuffer.put(buffer, 0, sps_or_pps_len);
-                            mediaCodec.queueInputBuffer(inputBufferId, 0, sps_or_pps_len, /*presentationTime++*/0, MediaCodec.BUFFER_FLAG_CODEC_CONFIG);
-                        } else {
-                            setMessage(String.format("codec.dequeueInputBuffer=%d", inputBufferId));
-                            return;
-                        }
+                    //feed SPS/PPS to a codec
+                    int inputBufferId = mediaCodec.dequeueInputBuffer(1000000);//wait 1 second for an input buffer
+                    if (inputBufferId >= 0) {
+                        ByteBuffer inputBuffer = mediaCodec.getInputBuffer(inputBufferId);
+                        inputBuffer.put(buffer, 0, sps_or_pps_len);
+                        mediaCodec.queueInputBuffer(inputBufferId, 0, sps_or_pps_len, 0, MediaCodec.BUFFER_FLAG_CODEC_CONFIG);
+                    } else {
+                        setMessage(String.format("codec.dequeueInputBuffer=%d", inputBufferId));
+                        return;
                     }
 
                     hideStatusBar();
@@ -599,7 +600,7 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                                     return;
                                 }
 
-                                int inputBufferId = mediaCodec.dequeueInputBuffer(INPUT_BUFFER_TIMEOUT);
+                                inputBufferId = mediaCodec.dequeueInputBuffer(INPUT_BUFFER_TIMEOUT);
                                 if (inputBufferId >= 0) {
                                     ByteBuffer inputBuffer = mediaCodec.getInputBuffer(inputBufferId);
                                     read_exact(buffer, iFrameLen);

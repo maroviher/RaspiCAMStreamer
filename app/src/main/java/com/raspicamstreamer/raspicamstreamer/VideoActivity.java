@@ -178,6 +178,8 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                     button_SS.setText("10");
                 else if(bCap.equals("10"))
                     button_SS.setText("100");
+                else if(bCap.equals("100"))
+                    button_SS.setText("1000");
                 else
                     button_SS.setText("1");
             }
@@ -359,6 +361,7 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
         static final byte CurrentResolution = 0, RegularFrame = 1, MotionInFrame = 2, MotionAlarm = 3;
         private boolean mStop = false;
         VideoActivity mParent;
+        int m_iISO = 0, m_iSS = 0;
 
         public void ShowFps(boolean bShow)
         {
@@ -367,12 +370,14 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
 
         public void SetISO(int iISO)
         {
+            m_iISO = iISO;
             if(socket != null && socket.isConnected())
                 sockPrintWriter.println(String.format("iso=%d", iISO));
         }
 
         public void SetSS(int iSS)
         {
+            m_iSS = iSS;
             if(socket != null && socket.isConnected())
                 sockPrintWriter.println(String.format("ss=%d", iSS));
         }
@@ -548,6 +553,10 @@ public class VideoActivity extends AppCompatActivity implements TextureView.Surf
                         SetShowMotion(1);
                     if(0 != m_iMotAlarm)
                         SetMotionAlarm(m_iMotAlarm);
+                    if(0 != m_iISO)
+                        SetISO(m_iISO);
+                    if(0 != m_iSS)
+                        SetSS(m_iSS);
 
 
                     //read SPS/PPS
